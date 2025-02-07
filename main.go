@@ -14,7 +14,7 @@ var (
 	apiUsername      = os.Getenv("API_USER")
 	// accessToken      = "7BXtarGYcQaCiCeS706G9M83DxC1ZJux"
 	accessToken      = os.Getenv("API_TOKEN")
-    internalEndpoint = "http://0.0.0.0:9000/api/subscribers/switch_list"
+    internalEndpoint = "http://0.0.0.0/api/subscribers/switch_list"
     hindiListId      = os.Getenv("HINDI_LIST")
     englishListId    = os.Getenv("ENGLISH_LIST")
 )

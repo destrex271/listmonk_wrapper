@@ -7,16 +7,27 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 )
 
-const (
-	apiUsername      = "test"
-	accessToken      = "77ql14YHnr1eAKgQzRrOJU8O3mcWacXe"
-    internalEndpoint = "http://localhost:9000/api/subscribers/switch_to_hindi"
+var (
+	apiUsername      = os.Getenv("API_USER")
+	// accessToken      = "7BXtarGYcQaCiCeS706G9M83DxC1ZJux"
+	accessToken      = os.Getenv("API_TOKEN")
+    internalEndpoint = "http://0.0.0.0:9000/api/subscribers/switch_list"
+    hindiListId      = os.Getenv("HINDI_LIST")
+    englishListId    = os.Getenv("ENGLISH_LIST")
 )
 
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
+    fmt.Println(r.URL.Query())
 	email := r.URL.Query().Get("email")
+    list1 := r.URL.Query().Get("lista")
+    list2 := r.URL.Query().Get("listr")
+    addBoth := r.URL.Query().Get("addBoth")
+
+    fmt.Println(email, list1, list2, addBoth)
+
 	if email == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
 		return
@@ -31,6 +42,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := proxyURL.Query()
 	query.Set("email", email)
+    query.Set("lista", list1)
+    query.Set("listr", list2)
+    query.Set("addBoth", addBoth)
 	proxyURL.RawQuery = query.Encode()
 
 	// Create the request to the internal endpoint
@@ -63,7 +77,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/proxy/switch_to_hindi", proxyHandler)
+	http.HandleFunc("/proxy/switch_language", proxyHandler)
+
 	fmt.Println("Proxy server is running on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

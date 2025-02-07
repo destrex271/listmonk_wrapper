@@ -19,35 +19,8 @@ var (
     englishListId    = os.Getenv("ENGLISH_LIST")
 )
 
-func proxyHandler(w http.ResponseWriter, r *http.Request) {
-    fmt.Println(r.URL.Query())
-	email := r.URL.Query().Get("email")
-    list1 := r.URL.Query().Get("lista")
-    list2 := r.URL.Query().Get("listr")
-    addBoth := r.URL.Query().Get("addBoth")
-
-    fmt.Println(email, list1, list2, addBoth)
-
-	if email == "" {
-		http.Error(w, "Email is required", http.StatusBadRequest)
-		return
-	}
-
-	// Create the URL for the internal endpoint with the API key
-	proxyURL, err := url.Parse(internalEndpoint)
-	if err != nil {
-		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
-		return
-	}
-
-	query := proxyURL.Query()
-	query.Set("email", email)
-    query.Set("lista", list1)
-    query.Set("listr", list2)
-    query.Set("addBoth", addBoth)
-	proxyURL.RawQuery = query.Encode()
-
-	// Create the request to the internal endpoint
+func sendRequest(proxyURL *url.URL, w http.ResponseWriter) {
+    // Create the request to the internal endpoint
 	req, err := http.NewRequest("GET", proxyURL.String(), nil)
 	if err != nil {
 		http.Error(w, "Error creating request", http.StatusInternalServerError)
@@ -76,8 +49,92 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func proxyHandler_HIN_TO_ENG(w http.ResponseWriter, r *http.Request) {
+    fmt.Println(r.URL.Query())
+	email := r.URL.Query().Get("email")
+    fmt.Println(email + " from HIN to ENG")
+
+	if email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	// Create the URL for the internal endpoint with the API key
+	proxyURL, err := url.Parse(internalEndpoint)
+	if err != nil {
+		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
+		return
+	}
+
+	query := proxyURL.Query()
+	query.Set("email", email)
+    query.Set("lista", hindiListId)
+    query.Set("listr", englishListId)
+    query.Set("addBoth", "0")
+	proxyURL.RawQuery = query.Encode()
+
+    sendRequest(proxyURL, w)
+}
+
+func proxyHandler_ENG_TO_HIN(w http.ResponseWriter, r *http.Request) {
+    fmt.Println(r.URL.Query())
+	email := r.URL.Query().Get("email")
+    fmt.Println(email + " from ENG to HIN")
+
+	if email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	// Create the URL for the internal endpoint with the API key
+	proxyURL, err := url.Parse(internalEndpoint)
+	if err != nil {
+		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
+		return
+	}
+
+	query := proxyURL.Query()
+	query.Set("email", email)
+    query.Set("lista", englishListId)
+    query.Set("listr", hindiListId)
+    query.Set("addBoth", "0")
+	proxyURL.RawQuery = query.Encode()
+
+    sendRequest(proxyURL, w)
+}
+
+func proxyHandler_BOTH(w http.ResponseWriter, r *http.Request) {
+    fmt.Println(r.URL.Query())
+	email := r.URL.Query().Get("email")
+    fmt.Println(email + " from BOTH ENG & HIN")
+
+	if email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	// Create the URL for the internal endpoint with the API key
+	proxyURL, err := url.Parse(internalEndpoint)
+	if err != nil {
+		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
+		return
+	}
+
+	query := proxyURL.Query()
+	query.Set("email", email)
+    query.Set("lista", hindiListId)
+    query.Set("listr", englishListId)
+    query.Set("addBoth", "1")
+	proxyURL.RawQuery = query.Encode()
+
+    sendRequest(proxyURL, w)
+}
+
+
 func main() {
-	http.HandleFunc("/proxy/switch_language", proxyHandler)
+	http.HandleFunc("/proxy/switch_to_hindi", proxyHandler_ENG_TO_HIN)
+	http.HandleFunc("/proxy/switch_to_english", proxyHandler_HIN_TO_ENG)
+	http.HandleFunc("/proxy/use_both", proxyHandler_BOTH)
 
 	fmt.Println("Proxy server is running on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

@@ -3,6 +3,8 @@
 To set
 
 ```
+LISTMONK_URL
+
 API_USER
 
 API_TOKEN

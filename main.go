@@ -14,7 +14,7 @@ var (
 	apiUsername      = os.Getenv("API_USER")
 	// accessToken      = "7BXtarGYcQaCiCeS706G9M83DxC1ZJux"
 	accessToken      = os.Getenv("API_TOKEN")
-    internalEndpoint = "http://0.0.0.0/api/subscribers/switch_list"
+    internalEndpoint = "http://" + os.Getenv("LISTMONK_URL") + "/api/subscribers/switch_list"
     hindiListId      = os.Getenv("HINDI_LIST")
     englishListId    = os.Getenv("ENGLISH_LIST")
 )
@@ -68,8 +68,8 @@ func proxyHandler_HIN_TO_ENG(w http.ResponseWriter, r *http.Request) {
 
 	query := proxyURL.Query()
 	query.Set("email", email)
-    query.Set("lista", hindiListId)
-    query.Set("listr", englishListId)
+    query.Set("lista", englishListId)
+    query.Set("listr", hindiListId)
     query.Set("addBoth", "0")
 	proxyURL.RawQuery = query.Encode()
 
@@ -95,8 +95,8 @@ func proxyHandler_ENG_TO_HIN(w http.ResponseWriter, r *http.Request) {
 
 	query := proxyURL.Query()
 	query.Set("email", email)
-    query.Set("lista", englishListId)
-    query.Set("listr", hindiListId)
+    query.Set("lista", hindiListId)
+    query.Set("listr", englishListId)
     query.Set("addBoth", "0")
 	proxyURL.RawQuery = query.Encode()
 

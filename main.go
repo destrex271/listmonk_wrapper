@@ -132,6 +132,7 @@ func proxyHandler_BOTH(w http.ResponseWriter, r *http.Request) {
 
 
 func main() {
+    http.Handle("/", http.FileServer(http.Dir("./static")))
 	http.HandleFunc("/proxy/switch_to_hindi", proxyHandler_ENG_TO_HIN)
 	http.HandleFunc("/proxy/switch_to_english", proxyHandler_HIN_TO_ENG)
 	http.HandleFunc("/proxy/use_both", proxyHandler_BOTH)

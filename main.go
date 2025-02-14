@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	// "encoding/base64"
 	"encoding/base64"
 	"encoding/json"
@@ -30,40 +31,50 @@ var (
 type RequestBody struct {
     Email string `json:"email"`
     List1 []int  `json:"lista"`
-    List2 []int  `json:"listr"`
 }
 
-func sendPostRequest(body RequestBody) (*http.Response, error) {
+func sendPostRequest(body RequestBody, w http.ResponseWriter) {
+    fmt.Println("Sending POST REQ to ", internalEndpoint)
     url := internalEndpoint
     auth := apiUsername + ":" + accessToken
     authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
     // Marshal the body into JSON
     requestBody, err := json.Marshal(body)
     if err != nil {
-        return nil, fmt.Errorf("error marshalling request body: %v", err)
+        http.Error(w, "Error marshalling request body", http.StatusInternalServerError)
+        return
     }
 
     // Create a new POST request
     req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
     if err != nil {
-        return nil, fmt.Errorf("error creating request: %v", err)
+        http.Error(w, "Error creating request", http.StatusInternalServerError)
+        return
     }
 
     // Set appropriate headers
     req.Header.Set("Content-Type", "application/json")
     req.Header.Add("Authorization", authHeader)
 
+    fmt.Println(req)
 
     // Send the request using the default HTTP client
     client := &http.Client{}
     resp, err := client.Do(req)
     if err != nil {
-        return nil, fmt.Errorf("error sending request: %v", err)
+        http.Error(w, "Error sending request", http.StatusInternalServerError)
+        return
+    }
+    fmt.Println(resp)
+    defer resp.Body.Close()
+
+    // Copy the response from the internal endpoint to the client
+    w.WriteHeader(resp.StatusCode)
+    _, err = io.Copy(w, resp.Body)
+    if err != nil {
+        http.Error(w, "Error reading response", http.StatusInternalServerError)
     }
 
-    fmt.Println("Sent request: ", req, resp)
-
-    return resp, nil
 }
 
 type RequestData struct {
@@ -107,116 +118,18 @@ func proxyHandler_ChangeList(w http.ResponseWriter, r *http.Request) {
             req.List1 = append(req.List1, hindiListId1m)
         }else if data.Frequency == "3"{
             req.List1 = append(req.List1, englishListId3m)
-            req.List1 = append(req.List2, hindiListId3m)
+            req.List1 = append(req.List1, hindiListId3m)
         }
     }
 
     fmt.Println(req.List1)
 
-    sendPostRequest(req)
-
-	// Simple response
-	response := map[string]string{
-		"message":   "Received data successfully",
-		"language":  data.Language,
-		"frequency": data.Frequency,
-	}
-
-	// Send JSON response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+   sendPostRequest(req, w)
 }
-
-//
-// func proxyHandler_HIN_TO_ENG(w http.ResponseWriter, r *http.Request) {
-//     fmt.Println(r.URL.Query())
-// 	email := r.URL.Query().Get("email")
-//     fmt.Println(email + " from HIN to ENG")
-//
-// 	if email == "" {
-// 		http.Error(w, "Email is required", http.StatusBadRequest)
-// 		return
-// 	}
-//
-// 	// Create the URL for the internal endpoint with the API key
-// 	proxyURL, err := url.Parse(internalEndpoint)
-// 	if err != nil {
-// 		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
-// 		return
-// 	}
-//
-// 	query := proxyURL.Query()
-// 	query.Set("email", email)
-//     query.Set("lista", englishListId)
-//     query.Set("listr", hindiListId)
-//     query.Set("addBoth", "0")
-// 	proxyURL.RawQuery = query.Encode()
-//
-//     sendRequest(proxyURL, w)
-// }
-//
-// func proxyHandler_ENG_TO_HIN(w http.ResponseWriter, r *http.Request) {
-//     fmt.Println(r.URL.Query())
-// 	email := r.URL.Query().Get("email")
-//     fmt.Println(email + " from ENG to HIN")
-//
-// 	if email == "" {
-// 		http.Error(w, "Email is required", http.StatusBadRequest)
-// 		return
-// 	}
-//
-// 	// Create the URL for the internal endpoint with the API key
-// 	proxyURL, err := url.Parse(internalEndpoint)
-// 	if err != nil {
-// 		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
-// 		return
-// 	}
-//
-// 	query := proxyURL.Query()
-// 	query.Set("email", email)
-//     query.Set("lista", hindiListId)
-//     query.Set("listr", englishListId)
-//     query.Set("addBoth", "0")
-// 	proxyURL.RawQuery = query.Encode()
-//
-//     sendRequest(proxyURL, w)
-// }
-//
-// func proxyHandler_BOTH(w http.ResponseWriter, r *http.Request) {
-//     fmt.Println(r.URL.Query())
-// 	email := r.URL.Query().Get("email")
-//     fmt.Println(email + " from BOTH ENG & HIN")
-//
-// 	if email == "" {
-// 		http.Error(w, "Email is required", http.StatusBadRequest)
-// 		return
-// 	}
-//
-// 	// Create the URL for the internal endpoint with the API key
-// 	proxyURL, err := url.Parse(internalEndpoint)
-// 	if err != nil {
-// 		http.Error(w, "Invalid internal endpoint URL", http.StatusInternalServerError)
-// 		return
-// 	}
-//
-// 	query := proxyURL.Query()
-// 	query.Set("email", email)
-//     query.Set("lista", hindiListId)
-//     query.Set("listr", englishListId)
-//     query.Set("addBoth", "1")
-// 	proxyURL.RawQuery = query.Encode()
-//
-//     sendRequest(proxyURL, w)
-// }
-
 
 func main() {
     http.Handle("/", http.FileServer(http.Dir("./static")))
     http.HandleFunc("/proxy/change_user_pref", proxyHandler_ChangeList)
-	// http.HandleFunc("/proxy/switch_to_hindi", proxyHandler_ENG_TO_HIN)
-	// http.HandleFunc("/proxy/switch_to_english", proxyHandler_HIN_TO_ENG)
-	// http.HandleFunc("/proxy/use_both", proxyHandler_BOTH)
 
 	fmt.Println("Proxy server is running on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

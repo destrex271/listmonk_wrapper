@@ -46,10 +46,10 @@ type CreateListReq struct {
 }
 
 type UpdateSubscribers struct {
-	Ids           []string `json:"ids"`
-	Action        string   `json:"action"`
-	TargetListIDs []string `json:"target_list_ids"`
-	Status        string   `json:"status"`
+	Ids           []int  `json:"ids"`
+	Action        string `json:"action"`
+	TargetListIDs []int  `json:"target_list_ids"`
+	Status        string `json:"status"`
 }
 
 // Preference selection
@@ -62,4 +62,14 @@ type RequestData struct {
 	Email     string `json:"email"`
 	Language  string `json:"language"`
 	Frequency string `json:"frequency"`
+}
+
+type Subscriber struct {
+	ID int `json:"id"`
+}
+
+type ResponseSubQuery struct {
+	Data struct {
+		Results []Subscriber `json:"results"`
+	} `json:"data"`
 }

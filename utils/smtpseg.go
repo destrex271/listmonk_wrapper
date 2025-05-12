@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 )
 
@@ -92,6 +93,7 @@ func DeleteList(listEndpoint string, apiUsername string, accessToken string, lis
 	// Send the request using the default HTTP client
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -102,36 +104,92 @@ func DeleteList(listEndpoint string, apiUsername string, accessToken string, lis
 		return err
 	}
 	log.Println(string(bodyBytes))
-	defer resp.Body.Close()
-
 	// Set appropriate headers
 	return nil
 }
 
-// Update Recepients
-func UpdateRecepients(apiUsername string, accessToken string, listEndpoint string, action string, recps []Recipient, listId string) error {
-	ids := []string{}
-	for _, rec := range recps {
-		ids = append(ids, rec.UUID)
+func FetchIDsFromUUIDs(apiUsername string, accessToken string, subsEndpoint string, recps []Recipient) ([]int, error) {
+	queryString := "subscribers.uuid IN ("
+	for i, recp := range recps {
+		queryString += ("'" + recp.UUID + "'")
+		if i < len(recps)-1 {
+			queryString += ","
+		}
 	}
+	queryString += ")"
+	fmt.Println(queryString)
+	queryString = url.QueryEscape(queryString)
+	fmt.Println(queryString)
+	req, err := http.NewRequest("GET", subsEndpoint+"?query="+queryString, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	auth := apiUsername + ":" + accessToken
+	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Authorization", authHeader)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	fmt.Println("I am here 5....")
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("I am here 6....")
+	fmt.Println("OLA", resp)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	log.Println("HERE!!!")
+	log.Println(string(bodyBytes))
+
+	var response ResponseSubQuery
+	err = json.Unmarshal(bodyBytes, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("RES->>", response)
+
+	var idStrings []int
+	for _, sub := range response.Data.Results {
+		idStrings = append(idStrings, sub.ID)
+	}
+
+	return idStrings, nil
+}
+
+// Update Recepients
+func UpdateRecepients(apiUsername string, accessToken string, membershipEndpoint string, ids []int, listId string, action string) error {
+	fmt.Println("I am here...", action, listId)
+	id, _ := strconv.Atoi(listId)
 	body := UpdateSubscribers{
 		Ids:           ids,
-		Action:        "add",
-		TargetListIDs: []string{listId},
-		Status:        "confirmed",
+		Action:        action, // add or remove
+		TargetListIDs: []int{id},
+	}
+	if action == "add" {
+		body.Status = "confirmed"
 	}
 
 	content, err := json.Marshal(body)
+	fmt.Println("I am here 2", content)
 	if err != nil {
+		log.Println("HERE -1!!!")
+		log.Println(err.Error())
 		return err
 	}
 
-	req, err := http.NewRequest("POST", listEndpoint, bytes.NewBuffer(content))
+	fmt.Println("I am here 3....", membershipEndpoint)
+	req, err := http.NewRequest("PUT", membershipEndpoint, bytes.NewBuffer(content))
 	if err != nil {
+		log.Println("HERE 1!!!")
+		log.Println(err.Error())
 		return err
 	}
 
 	// Set appropriate headers
+	fmt.Println("I am here 4....")
 	auth := apiUsername + ":" + accessToken
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 	req.Header.Set("Content-Type", "application/json")
@@ -140,12 +198,18 @@ func UpdateRecepients(apiUsername string, accessToken string, listEndpoint strin
 	// Send the request using the default HTTP client
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	fmt.Println("I am here 5....")
 	if err != nil {
 		return err
 	}
-	fmt.Println(resp)
-	defer resp.Body.Close()
+	fmt.Println("I am here 6....")
+	fmt.Println("OLA", resp)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	log.Println("HERE!!!")
+	log.Println(string(bodyBytes))
 
+	fmt.Println("I am here 7....")
 	return nil
 }
 

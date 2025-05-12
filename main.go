@@ -4,8 +4,10 @@ import (
 
 	// "encoding/base64"
 
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	// "io"
 	"log"
@@ -26,6 +28,7 @@ var (
 	campaignEndpoint   = "http://" + os.Getenv("LISTMONK_URL") + "/api/campaigns"
 	listEndpoint       = "http://" + os.Getenv("LISTMONK_URL") + "/api/lists"
 	membershipEndpoint = "http://" + os.Getenv("LISTMONK_URL") + "/api/subscribers/lists"
+	subsEndpoint       = "http://" + os.Getenv("LISTMONK_URL") + "/api/subscribers"
 	hindiListId3m, _   = strconv.Atoi(os.Getenv("HINDI_LIST_3M"))
 	englishListId3m, _ = strconv.Atoi(os.Getenv("ENGLISH_LIST_3M"))
 	hindiListId1m, _   = strconv.Atoi(os.Getenv("HINDI_LIST_1M"))
@@ -62,12 +65,22 @@ func proxyHandler_RoutingMessenger(w http.ResponseWriter, r *http.Request) {
 
 	// re-route as new campaigns to listmonk
 	// Send campaign requests to internal listmonk
-	resp, err := CreateNewList(listEndpoint, apiUsername, accessToken, membershipEndpoint, "verified_1", w)
-	fmt.Println("RESP", resp)
-	fmt.Println(err)
-	log.Println("Deleting now...")
-	err = DeleteList(listEndpoint, apiUsername, accessToken, resp)
-	log.Println(err)
+	listId, err := CreateNewList(listEndpoint, apiUsername, accessToken, membershipEndpoint, "verified_1", w)
+	ids, err := FetchIDsFromUUIDs(apiUsername, accessToken, subsEndpoint, campaign1.Recipients)
+	fmt.Println("HERE--->", ids)
+	err = UpdateRecepients(apiUsername, accessToken, membershipEndpoint, ids, listId, "add")
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enter your name: ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	fmt.Println("Hello,", input)
+	err = UpdateRecepients(apiUsername, accessToken, membershipEndpoint, ids, listId, "remove")
+	// if err != nil {
+	// 	log.Println(err.Error())
+	// }
+	// log.Println("Deleting now...")
+	// err = DeleteList(listEndpoint, apiUsername, accessToken, resp)
+	// log.Println(err)
 	// sendCapmaign(campaign1, w)
 	// sendCapmaign(campaign2, w)
 }

@@ -14,8 +14,11 @@ import (
 	"strconv"
 )
 
+// func GetCampaginIDFromUUID(uuid string) (string, err){
+// }
+
 // Create Campaigns
-func CreateNewList(listEndpoint string, apiUsername string, accessToken string, membershipEndpoint string, list_title string, w http.ResponseWriter) (string, error) {
+func CreateNewList(listEndpoint string, apiUsername string, accessToken string, membershipEndpoint string, list_title string) (string, error) {
 	url := listEndpoint
 	auth := apiUsername + ":" + accessToken
 	authHeader := base64.StdEncoding.EncodeToString([]byte(auth))
@@ -31,13 +34,11 @@ func CreateNewList(listEndpoint string, apiUsername string, accessToken string, 
 	content, err := json.Marshal(body)
 	log.Println("Sending- > ", string(content))
 	if err != nil {
-		http.Error(w, "Unable to parse request", http.StatusInternalServerError)
 		return "", err
 	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(content))
 	if err != nil {
-		http.Error(w, "Error creating request", http.StatusInternalServerError)
 		return "", err
 	}
 
@@ -50,13 +51,13 @@ func CreateNewList(listEndpoint string, apiUsername string, accessToken string, 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		http.Error(w, "Error sending request", http.StatusInternalServerError)
 		return "", err
 	}
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Error reading response body:", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -159,7 +160,7 @@ func FetchIDsFromUUIDs(apiUsername string, accessToken string, subsEndpoint stri
 	return idStrings, nil
 }
 
-// Update Recepients
+// Update Recepients - ADD or REMOVE from list
 func UpdateRecepients(apiUsername string, accessToken string, membershipEndpoint string, ids []int, listId string, action string) error {
 	fmt.Println("I am here...", action, listId)
 	id, _ := strconv.Atoi(listId)
@@ -198,11 +199,11 @@ func UpdateRecepients(apiUsername string, accessToken string, membershipEndpoint
 	// Send the request using the default HTTP client
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	fmt.Println("I am here 5....")
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	fmt.Println("I am here 6....")
 	fmt.Println("OLA", resp)
 	bodyBytes, _ := io.ReadAll(resp.Body)
@@ -214,20 +215,29 @@ func UpdateRecepients(apiUsername string, accessToken string, membershipEndpoint
 }
 
 // Send Campaign
-func SendCapmaign(campaignEndpoint string, apiUsername string, accessToken string, body Postback, recps []Recipient, w http.ResponseWriter) {
+func SendCapmaign(campaignEndpoint string, apiUsername string, accessToken string, body Postback, listId int, messenger string) (int, error) {
 	url := campaignEndpoint
 	auth := apiUsername + ":" + accessToken
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 
-	content, err := json.Marshal(body)
+	campaignBody := CreateCampaignRequest{
+		FromEmail:   body.FromEmail,
+		Name:        body.Campaign.Name,
+		Subject:     body.Subject,
+		Lists:       []int{listId},
+		Type:        "regular",
+		ContentType: body.ContentType,
+		Body:        body.Body,
+		Messenger:   messenger,
+	}
+	content, err := json.Marshal(&campaignBody)
 	if err != nil {
-		http.Error(w, "Unable to parse request", http.StatusInternalServerError)
+		return -1, err
 	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(content))
 	if err != nil {
-		http.Error(w, "Error creating request", http.StatusInternalServerError)
-		return
+		return -1, err
 	}
 
 	// Set appropriate headers
@@ -240,16 +250,92 @@ func SendCapmaign(campaignEndpoint string, apiUsername string, accessToken strin
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		http.Error(w, "Error sending request", http.StatusInternalServerError)
-		return
+		return -1, err
 	}
 	fmt.Println(resp)
 	defer resp.Body.Close()
-
-	// Copy the response from the internal endpoint to the client
-	w.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(w, resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, "Error reading response", http.StatusInternalServerError)
+		return -1, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	var result CampaignResponse
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return -1, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	payload, err := json.Marshal(map[string]string{
+		"status": "running",
+	})
+	if err != nil {
+		return -1, err
+	}
+
+	req, err = http.NewRequest("PUT", campaignEndpoint+"/"+strconv.Itoa(result.Data.ID)+"/status", bytes.NewBuffer(payload))
+	if err != nil {
+		return -1, err
+	}
+
+	// Set appropriate headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Authorization", authHeader)
+
+	fmt.Println("HII!!!!", req)
+
+	// Send the request using the default HTTP client
+	// client = &http.Client{}
+	// resp, err = client.Do(req)
+	// if err != nil {
+	// 	return -1, err
+	// }
+	// fmt.Println(resp)
+	// defer resp.Body.Close()
+	// bodyBytes, err = io.ReadAll(resp.Body)
+	// if err != nil {
+	// 	return -1, fmt.Errorf("failed to read response body: %w", err)
+	// }
+
+	return result.Data.ID, nil
+}
+
+func GetCampaignStatus(cpId int, campaignEndpoint string, apiUsername string, accessToken string) bool {
+	req, err := http.NewRequest("GET", campaignEndpoint+"/"+strconv.Itoa(cpId), nil)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	auth := apiUsername + ":" + accessToken
+	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+
+	// Set appropriate headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Authorization", authHeader)
+
+	// Send the request using the default HTTP client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	fmt.Println(resp)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("failed to read response body: %w\n", err)
+		return false
+	}
+
+	data := make(map[string]interface{})
+	err = json.Unmarshal(bodyBytes, &data)
+	if err != nil {
+		log.Println(err.Error())
+		return false
+	}
+
+	cpData := data["data"].(map[string]interface{})
+	cpSent := cpData["status"].(string)
+
+	return cpSent != "running"
 }

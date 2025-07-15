@@ -23,6 +23,48 @@ type Campaign struct {
 	Tags      []string `json:"tags"`
 }
 
+type CampaignList struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type CRCampaign struct {
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	Subject      string    `json:"subject"`
+	Type         string    `json:"type"` // "regular" or "A/B"
+	EmailTemplateID int    `json:"email_template_id"`
+	EmailTemplateName string `json:"email_template_name"`
+	Content      string    `json:"content"`
+	AltContent   string    `json:"alt_content"`
+	CreatedAt    string    `json:"created_at"`
+	Status       string    `json:"status"` // "draft", "scheduled", "running", "paused", "completed", etc.
+	SentAt       *string   `json:"sent_at"`
+	Source       string    `json:"source"`
+	Tags         []string  `json:"tags"`
+	Lists        []CampaignList `json:"lists"` // List IDs targeted
+	FromEmail    string    `json:"from_email"`
+	FromName     string    `json:"from_name"`
+	SMTPHost     string    `json:"smtp_host"`
+}
+
+type CreateCampaignRequest struct {
+	FromEmail   string `json:"from_email"`
+	Name        string `json:"name"`
+	Subject     string `json:"subject"`
+	Lists       []int  `json:"lists"`
+	Type        string `json:"type"`
+	ContentType string `json:"content_type"`
+	Body        string `json:"body"`
+	Messenger   string `json:"messenger"`
+}
+
+type CampaignResponse struct {
+	Data struct {
+		ID int `json:"id"`
+	} `json:"data"`
+}
+
 type Recipient struct {
 	UUID    string `json:"uuid"`
 	Email   string `json:"email"`
@@ -73,3 +115,26 @@ type ResponseSubQuery struct {
 		Results []Subscriber `json:"results"`
 	} `json:"data"`
 }
+
+
+
+// ---------------------------------------------------------
+
+
+type SubscriberRequest struct{
+	Email	string	`json:"email"`
+	Name	string 	`json:"name"`
+	Lists	[]string	`json:"lists"`
+	Frequency int	`json:"freq"`
+}
+
+type PostbackSubscriberRequest struct{
+	Email	string 	`json:"email"`
+	Name	string	`json:"name"`
+	Status	string	`json:"status"`
+	Lists	[]int	`json:"lists"`
+	Attribs	map[string]any	`json:"attribs"`
+	PreCon	bool	`json:"preconfirm_subscriptions"`
+}
+
+

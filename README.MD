@@ -17,9 +17,7 @@ ENGLISH_LIST
 Endpoints
 
 ```
-ENG to HIN: /proxy/switch_to_hin
-HIN to ENG: /proxy/switch_to_english
-BOTH: /proxy/use_both
+Send Campaign: /proxy/send_campaign
 ```
 
 ## Instructions

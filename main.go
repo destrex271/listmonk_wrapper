@@ -228,7 +228,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request){
 	reqCreate.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(reqCreate)
 	if err != nil || resp.StatusCode != 200 {
-		http.Error(w, "Failed to create campaign", http.StatusInternalServerError)
+		http.Error(w, "Failed to create campaign " + err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
@@ -245,7 +245,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request){
 	fmt.Println("hi->", resp.Body)
 	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
 		fmt.Println(err)
-		http.Error(w, "Failed to decode campaign response", http.StatusInternalServerError)
+		http.Error(w, "Failed to decode campaign response " + err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -259,7 +259,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request){
 	if err != nil || respStatus.StatusCode != 200 {
 		bodyText, _ := io.ReadAll(respStatus.Body)
 		log.Printf("Failed to set campaign status: %s", string(bodyText))
-		http.Error(w, "Failed to start campaign", http.StatusInternalServerError)
+		http.Error(w, "Failed to start campaign " + err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer respStatus.Body.Close()
@@ -271,7 +271,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request){
 		reqCheck.Header.Set("Authorization", authHeader)
 		respCheck, err := http.DefaultClient.Do(reqCheck)
 		if err != nil || respCheck.StatusCode != 200 {
-			http.Error(w, "Failed to check campaign status", http.StatusInternalServerError)
+			http.Error(w, "Failed to check campaign status " + err.Error(), http.StatusInternalServerError)
 			return
 		}
 		var statusResp struct {

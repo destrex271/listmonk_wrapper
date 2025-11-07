@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"time"
+	"thread"
 
 	// "io"
 	"log"
@@ -77,30 +78,6 @@ func syncSubscribers() {
 	}
 
 }
-
-func pollCampaignStatus(id str){
-	// 4. Poll for completion
-	for {
-		time.Sleep(2 * time.Second)
-		reqCheck, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/campaigns/%d", listmonkURL, id,created.Data.ID), nil)
-		reqCheck.Header.Set("Authorization", authHeader)
-		respCheck, err := http.DefaultClient.Do(reqCheck)
-		if err != nil || respCheck.StatusCode != 200 {
-			http.Error(w, "Failed to check campaign status " + err.Error(), http.StatusInternalServerError)
-			return
-		}
-		var statusResp struct {
-			Data CRCampaign `json:"data"`
-		}
-		json.NewDecoder(respCheck.Body).Decode(&statusResp)
-		respCheck.Body.Close()
-
-		if statusResp.Data.Status == "finished" {
-			break
-		}
-	}
-}
-
 
 func withCORS(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -184,5 +161,14 @@ func main() {
 	http.HandleFunc("/proxy/send_campaign", withCORS(proxyHandler_SendCampaign))
 
 	fmt.Println("Proxy server is running on port 8080")
+
+	go func() {
+		for true{
+			// Synchronize subscribers every 24 hours
+			sync_subs()
+			time.Sleep(24 * time.Hour())
+		}
+	}()
+
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

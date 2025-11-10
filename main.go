@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"time"
-	"thread"
+	"database/sql"
 
 	// "io"
 	"log"
@@ -22,6 +22,8 @@ import (
 	"strconv"
 
 	. "github.com/destrex271/listmonk_proxy/utils"
+	"github.com/jackc/pgx/v5"
+
 )
 
 var (
@@ -39,15 +41,66 @@ var (
 	hindiListId1m, _   = strconv.Atoi(os.Getenv("HINDI_LIST_1M"))
 	englishListId1m, _ = strconv.Atoi(os.Getenv("ENGLISH_LIST_1M"))
 	database_url       = os.Getenv("DATABASE_URL")
+	original_database_url = os.Getenv("ASP_DATABASE_URL")
+	asp_username = os.Getenv("ASP_USER_NAME")
+	asp_passwd = os.Getenv("ASP_PASSWD")
 )
 
-func syncSubscribers() {
+func dropBlocklist() {
+	//
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil{
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close(context.Background())o
+	defer conn.Close(context.Background())
+
+	// Get blocklisted subscribers email
+	query := "SELECT email FROM subscribers WHERE status = 'blocklisted';"
+	rows, err := conn.Query(context.Background(), query)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
+		os.Exit(1)
+	}
+	defer rows.Close()
+
+	var subscribers []string
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			fmt.Fprintf(os.Stderr, "Scan failed: %v\n", err)
+			os.Exit(1)
+		}
+		subscribers = append(subscribers, email)
+	}
+
+
+	// delete blocklisted subsribers from ASP DB
+	db, err := sql.Open("sqlserver", original_database_url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, email := range subscribers {
+		_, err := db.Exec("DELETE FROM subscribers WHERE email = @p1", email)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+
+	// Delete blocklisted subscribers in listmonk
+	conn.Exec(context.Background(), "DELETE FROM subscribers WHERE email IN $1", subscribers)
+}
+
+func syncSubscribers() {
+	conn, err := pgx.Connect(context.Background(), database_url)
+	if err != nil{
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		return
+	}
+	defer conn.Close(context.Background())
 
 	move_verified := "SELECT mark_verified_on_view();"
 	check_bounce_threshold := "SELECT check_bounce_threshold();"
@@ -57,14 +110,14 @@ func syncSubscribers() {
 	_, err = conn.Exec(context.Background(), move_verified)
 	if err != nil{
 		fmt.Println("%v", err)
-		os.Exit(1)
+		return
 	}
 
 	// convert status of verified to unverified if bounced
 	_, err = conn.Exec(context.Background(), check_bounce_threshold)
 	if err != nil{
 		fmt.Println("%v", err)
-		os.Exit(1)
+		return
 	}
 
 	// TODO: For any bounced subs that need to be deleted, take
@@ -74,7 +127,7 @@ func syncSubscribers() {
 	_, err = conn.Exec(context.Background(), sync_subs)
 	if err != nil{
 		fmt.Println("%v", err)
-		os.Exit(1)
+		return
 	}
 
 }
@@ -165,8 +218,15 @@ func main() {
 	go func() {
 		for true{
 			// Synchronize subscribers every 24 hours
-			sync_subs()
-			time.Sleep(24 * time.Hour())
+			syncSubscribers()
+			time.Sleep(24 * time.Hour) // Every hour
+		}
+	}()
+
+	go func() {
+		for true{
+			dropBlocklist()
+			time.Sleep(48 * time.Hour) // Every two days
 		}
 	}()
 

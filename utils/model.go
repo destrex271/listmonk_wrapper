@@ -29,23 +29,23 @@ type CampaignList struct {
 }
 
 type CRCampaign struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Subject      string    `json:"subject"`
-	Type         string    `json:"type"` // "regular" or "A/B"
-	EmailTemplateID int    `json:"email_template_id"`
-	EmailTemplateName string `json:"email_template_name"`
-	Content      string    `json:"content"`
-	AltContent   string    `json:"alt_content"`
-	CreatedAt    string    `json:"created_at"`
-	Status       string    `json:"status"` // "draft", "scheduled", "running", "paused", "completed", etc.
-	SentAt       *string   `json:"sent_at"`
-	Source       string    `json:"source"`
-	Tags         []string  `json:"tags"`
-	Lists        []CampaignList `json:"lists"` // List IDs targeted
-	FromEmail    string    `json:"from_email"`
-	FromName     string    `json:"from_name"`
-	SMTPHost     string    `json:"smtp_host"`
+	ID                int            `json:"id"`
+	Name              string         `json:"name"`
+	Subject           string         `json:"subject"`
+	Type              string         `json:"type"` // "regular" or "A/B"
+	EmailTemplateID   int            `json:"email_template_id"`
+	EmailTemplateName string         `json:"email_template_name"`
+	Content           string         `json:"content"`
+	AltContent        string         `json:"alt_content"`
+	CreatedAt         string         `json:"created_at"`
+	Status            string         `json:"status"` // "draft", "scheduled", "running", "paused", "completed", etc.
+	SentAt            *string        `json:"sent_at"`
+	Source            string         `json:"source"`
+	Tags              []string       `json:"tags"`
+	Lists             []CampaignList `json:"lists"` // List IDs targeted
+	FromEmail         string         `json:"from_email"`
+	FromName          string         `json:"from_name"`
+	SMTPHost          string         `json:"smtp_host"`
 }
 
 type CreateCampaignRequest struct {
@@ -116,25 +116,20 @@ type ResponseSubQuery struct {
 	} `json:"data"`
 }
 
-
-
 // ---------------------------------------------------------
 
-
-type SubscriberRequest struct{
-	Email	string	`json:"email"`
-	Name	string 	`json:"name"`
-	Lists	[]string	`json:"lists"`
-	Frequency int	`json:"freq"`
+type SubscriberRequest struct {
+	Email     string   `json:"email"`
+	Name      string   `json:"name"`
+	Lists     []string `json:"lists"`
+	Frequency int      `json:"freq"`
 }
 
-type PostbackSubscriberRequest struct{
-	Email	string 	`json:"email"`
-	Name	string	`json:"name"`
-	Status	string	`json:"status"`
-	Lists	[]int	`json:"lists"`
-	Attribs	map[string]any	`json:"attribs"`
-	PreCon	bool	`json:"preconfirm_subscriptions"`
+type PostbackSubscriberRequest struct {
+	Email   string         `json:"email"`
+	Name    string         `json:"name"`
+	Status  string         `json:"status"`
+	Lists   []int          `json:"lists"`
+	Attribs map[string]any `json:"attribs"`
+	PreCon  bool           `json:"preconfirm_subscriptions"`
 }
-
-

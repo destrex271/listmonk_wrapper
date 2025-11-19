@@ -28,6 +28,7 @@ import (
 
 var (
 	apiUsername = os.Getenv("API_USER")
+	port = os.Getenv("PORT")
 	// accessToken      = "7BXtarGYcQaCiCeS706G9M83DxC1ZJux"
 	accessToken           = os.Getenv("API_TOKEN")
 	listmonkURL           = "http://" + os.Getenv("LISTMONK_URL")
@@ -266,5 +267,5 @@ func main() {
 		}
 	}()
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(port, nil))
 }

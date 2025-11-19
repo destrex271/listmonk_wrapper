@@ -28,7 +28,7 @@ import (
 
 var (
 	apiUsername = os.Getenv("API_USER")
-	port = os.Getenv("PORT")
+	port        = os.Getenv("PORT")
 	// accessToken      = "7BXtarGYcQaCiCeS706G9M83DxC1ZJux"
 	accessToken           = os.Getenv("API_TOKEN")
 	listmonkURL           = "http://" + os.Getenv("LISTMONK_URL")
@@ -45,6 +45,9 @@ var (
 	original_database_url = os.Getenv("ASP_DATABASE_URL")
 	asp_username          = os.Getenv("ASP_USER_NAME")
 	asp_passwd            = os.Getenv("ASP_PASSWD")
+
+	blockListDropTime, _ = strconv.Atoi(os.Getenv("BLOCKLIST_DROP_TIME_HOURS"))
+	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
 )
 
 func dropBlocklist() {
@@ -256,14 +259,14 @@ func main() {
 		for true {
 			// Synchronize subscribers every 24 hours
 			syncSubscribers()
-			time.Sleep(24 * time.Hour) // Every hour
+			time.Sleep(time.Duration(syncSubsTime) * time.Hour)
 		}
 	}()
 
 	go func() {
 		for true {
 			dropBlocklist()
-			time.Sleep(48 * time.Hour) // Every two days
+			time.Sleep(time.Duration(blockListDropTime) * time.Hour)
 		}
 	}()
 

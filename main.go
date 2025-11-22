@@ -302,7 +302,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
 	http.HandleFunc("/proxy/send_campaign", withCORS(proxyHandler_SendCampaign))
 	http.HandleFunc("/proxy/sync_subs", withCORS(proxyHandler_SyncSubs))
-	http.HandleFunc("/proxy/unsubscriber", withCORS(UnsubscribeHandler))
+	http.HandleFunc("/proxy/unsubscribe", withCORS(UnsubscribeHandler))
 
 	fmt.Println("Proxy server is running on port 8080")
 

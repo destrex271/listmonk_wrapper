@@ -263,12 +263,12 @@ func main() {
 		}
 	}()
 
-	go func() {
-		for true {
-			dropBlocklist()
-			time.Sleep(time.Duration(blockListDropTime) * time.Hour)
-		}
-	}()
+	// go func() {
+	// 	for true {
+	// 		dropBlocklist()
+	// 		time.Sleep(time.Duration(blockListDropTime) * time.Hour)
+	// 	}
+	// }()
 
 	log.Fatal(http.ListenAndServe(port, nil))
 }

@@ -48,6 +48,7 @@ var (
 
 	blockListDropTime, _ = strconv.Atoi(os.Getenv("BLOCKLIST_DROP_TIME_HOURS"))
 	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
+	mainWebsiteUnsubURL  = os.Getenv("MAIN_WEBSITE_UNSUB_LINK")
 )
 
 func dropBlocklist() {
@@ -248,10 +249,60 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
+func UnsubscribeHandler(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "Missing 'code' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := pgx.Connect(context.Background(), database_url)
+	if err != nil {
+		log.Printf("Unable to connect to database for unsubscribe: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	// 1. Get subscriber ID using the unsub_code in attribs
+	var subscriberID int
+	err = conn.QueryRow(context.Background(), "SELECT id FROM subscribers WHERE attribs->>'unsub_code' = $1", code).Scan(&subscriberID)
+	if err == pgx.ErrNoRows {
+		log.Printf("Subscriber with unsub_code '%s' not found", code)
+		http.Redirect(w, r, mainWebsiteUnsubURL, http.StatusFound) // Redirect even if not found, to avoid information leakage
+		return
+	}
+	if err != nil {
+		log.Printf("Error getting subscriber by unsub_code '%s': %v", code, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Blocklist and unsubscribe the user from all lists
+	_, err = conn.Exec(context.Background(), `
+		WITH b AS (
+			UPDATE subscribers SET status='blocklisted', updated_at=NOW()
+			WHERE id = ANY($1::INT[])
+		)
+		UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()
+		WHERE subscriber_id = ANY($1::INT[]);
+	`, []int{subscriberID})
+	if err != nil {
+		log.Printf("Error blocklisting subscriber ID %d: %v", subscriberID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Redirect to the main website with the code as a query parameter
+	redirectURL := fmt.Sprintf("%s?data=%s", mainWebsiteUnsubURL, code)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
 func main() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
 	http.HandleFunc("/proxy/send_campaign", withCORS(proxyHandler_SendCampaign))
 	http.HandleFunc("/proxy/sync_subs", withCORS(proxyHandler_SyncSubs))
+	http.HandleFunc("/proxy/unsubscriber", withCORS(UnsubscribeHandler))
 
 	fmt.Println("Proxy server is running on port 8080")
 

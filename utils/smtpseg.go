@@ -53,13 +53,13 @@ func CreateNewList(listEndpoint string, apiUsername string, accessToken string, 
 	if err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Error reading response body:", err)
 		return "", err
 	}
-	defer resp.Body.Close()
 
 	fmt.Println(string(bodyBytes))
 
@@ -94,10 +94,10 @@ func DeleteList(listEndpoint string, apiUsername string, accessToken string, lis
 	// Send the request using the default HTTP client
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -323,7 +323,7 @@ func GetCampaignStatus(cpId int, campaignEndpoint string, apiUsername string, ac
 	defer resp.Body.Close()
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("failed to read response body: %w\n", err)
+		log.Printf("failed to read response body: %v\n", err)
 		return false
 	}
 

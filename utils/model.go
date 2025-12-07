@@ -158,3 +158,64 @@ type ListMonkWebhook struct{
 	Type string `json:"hard"`
 	Meta string `json:"meta"`
 }
+
+// ZOHOMailAgentWebhook structs for new bounce payloads
+type ZOHOMailAgentWebhook struct {
+	EventName       []string          `json:"event_name"`
+	EventMessage    []ZOHOEventMessage `json:"event_message"`
+	MailagentKey    string            `json:"mailagent_key"`
+	WebhookRequestID string           `json:"webhook_request_id"`
+}
+
+type ZOHOEventMessage struct {
+	EmailInfo ZOHOEmailInfo   `json:"email_info"`
+	EventData []ZOHOEventData `json:"event_data"`
+	RequestID string      `json:"request_id"`
+}
+
+type ZOHOEmailInfo struct {
+	CC               []ZOHOEmailAddress `json:"cc"`
+	ClientReference  string         `json:"client_reference"`
+	BCC              []ZOHOEmailAddress `json:"bcc"`
+	IsSMTPTrigger    bool           `json:"is_smtp_trigger"`
+	Subject          string         `json:"subject"`
+	BounceAddress    string         `json:"bounce_address"`
+	IsSynced         bool           `json:"is_synced"`
+	EmailReference   string         `json:"email_reference"`
+	ReplyTo          []ZOHOReplyTo    `json:"reply_to"`
+	From             ZOHOFrom         `json:"from"`
+	To               []ZOHOEmailAddress `json:"to"`
+	Tag              string         `json:"tag"`
+	ProcessedTime    string         `json:"processed_time"`
+	Object           string         `json:"object"`
+}
+
+type ZOHOEmailAddress struct {
+	EmailAddress struct {
+		Address string `json:"address"`
+		Name    string `json:"name"`
+	} `json:"email_address"`
+}
+
+type ZOHOReplyTo struct {
+	Address string `json:"address"`
+	Name    string `json:"name"`
+}
+
+type ZOHOFrom struct {
+	Address string `json:"address"`
+	Name    string `json:"name"`
+}
+
+type ZOHOEventData struct {
+	Details []ZOHODetails `json:"details"`
+	Object  string    `json:"object"`
+}
+
+type ZOHODetails struct {
+	Reason           string `json:"reason"`
+	BouncedRecipient string `json:"bounced_recipient"`
+	Time             string `json:"time"`
+	DiagnosticMessage string `json:"diagnostic_message"`
+}
+

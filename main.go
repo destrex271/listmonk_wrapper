@@ -303,7 +303,7 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&webhookMessage); err != nil {
 		log.Printf("unable to parse webhook message! %v\n", err)
-		http.Error(w, "Invalid webhook payload", http.StatusBadRequest)
+		http.Error(w, "Invalid webhook payload", http.StatusOK)
 		return
 	}
 
@@ -313,7 +313,7 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusOK)
 		return
 	}
 	defer conn.Close(context.Background())
@@ -350,7 +350,7 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := json.Marshal(bounceReq)
 	if err != nil {
 		log.Printf("error marshalling bounce request: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusOK)
 		return
 	}
 
@@ -385,22 +385,106 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
+func webhookHandler_ZOHO(w http.ResponseWriter, r *http.Request) {
+	var webhookMessage ZOHOMailAgentWebhook
+
+	if err := json.NewDecoder(r.Body).Decode(&webhookMessage); err != nil {
+		log.Printf("unable to parse ZOHO webhook message! %v\n", err)
+		http.Error(w, "Invalid webhook payload", http.StatusOK)
+		return
+	}
+
+	fmt.Printf("%+v\n", webhookMessage)
+
+	conn, err := pgx.Connect(context.Background(), database_url)
+	if err != nil {
+		log.Printf("Unable to connect to database: %v\n", err)
+		http.Error(w, "Internal server error", http.StatusOK)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	auth := apiUsername + ":" + accessToken
+	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+
+	// Process each event message
+	for _, msg := range webhookMessage.EventMessage {
+		query := "SELECT uuid FROM campaigns WHERE subject = $1 ORDER BY created_at DESC;"
+		var campaignUUID string
+
+		if err := conn.QueryRow(context.Background(), query, msg.EmailInfo.Subject).Scan(&campaignUUID); err != nil {
+			log.Printf("unable to find campaign for subject '%s': %v\n", msg.EmailInfo.Subject, err)
+			// Still acknowledge the webhook even if campaign not found
+			continue
+		}
+
+		bounceType := "soft" // Default
+		if len(webhookMessage.EventName) > 0 {
+			if webhookMessage.EventName[0] == "hardbounce" {
+				bounceType = "hard"
+			}
+		}
+
+		for _, eventData := range msg.EventData {
+			for _, details := range eventData.Details {
+				bounceReq := &ListMonkWebhook{
+					Email:        details.BouncedRecipient,
+					CampaignUUID: campaignUUID,
+					Source:       "api",
+					Type:         bounceType,
+					Meta:         fmt.Sprintf(`{"reason": "%s", "diagnostic_message": "%s"}`, details.Reason, details.DiagnosticMessage),
+				}
+
+				body, err := json.Marshal(bounceReq)
+				if err != nil {
+					log.Printf("error marshalling bounce request: %v", err)
+					continue
+				}
+
+				log.Printf("Sending bounce report to listmonk webhook: %s\n", string(body))
+				req, err := http.NewRequest("POST", listmonkURL+"/webhooks/bounce", bytes.NewBuffer(body))
+				if err != nil {
+					log.Printf("error creating bounce request: %v", err)
+					continue
+				}
+
+				req.Header.Set("Authorization", authHeader)
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					log.Printf("error sending bounce to listmonk: %v", err)
+					continue
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != 200 {
+					bodyBytes, _ := io.ReadAll(resp.Body)
+					log.Printf("listmonk bounce webhook returned non-200 status: %d. Body: %s", resp.StatusCode, string(bodyBytes))
+				}
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
 func main() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
 	http.HandleFunc("/proxy/send_campaign", withCORS(proxyHandler_SendCampaign))
 	http.HandleFunc("/proxy/sync_subs", withCORS(proxyHandler_SyncSubs))
 	http.HandleFunc("/proxy/unsubscribe", withCORS(UnsubscribeHandler))
 	http.HandleFunc("/proxy/on_bounce", withCORS(webhookHandler))
+	http.HandleFunc("/proxy/on_bounce_zoho", withCORS(webhookHandler_ZOHO))
 
 	fmt.Println("Proxy server is running on port 8080")
 
-	go func() {
-		for true {
-			// Synchronize subscribers every 24 hours
-			syncSubscribers()
-			time.Sleep(time.Duration(syncSubsTime) * time.Hour)
-		}
-	}()
+	// go func() {
+	// 	for true {
+	// 		// Synchronize subscribers every 24 hours
+	// 		syncSubscribers()
+	// 		time.Sleep(time.Duration(syncSubsTime) * time.Hour)
+	// 	}
+	// }()
 
 	// go func() {
 	// 	for true {

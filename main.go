@@ -298,11 +298,76 @@ func UnsubscribeHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
+func webhookHandler(w http.ResponseWriter, r *http.Request) {
+	var webhookMessage AhaSendWebhook
+
+	if err := json.NewDecoder(r.Body).Decode(&webhookMessage); err != nil{
+		log.Fatalf("unable to parse webhook message! %v\n", err)
+	}
+
+	fmt.Printf("%v\n", webhookMessage)
+
+	// fetch latest campaign with the given subject
+	conn, err := pgx.Connect(context.Background(), database_url)
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close(context.Background())
+
+	query := "SELECT uuid FROM campaigns WHERE subject = $1;"
+	var campaignUUID string
+
+
+	if err = conn.QueryRow(context.Background(), query, webhookMessage.Data.Subject).Scan(&campaignUUID); err != nil{
+		log.Printf("unable to find campaign %v\n", err)
+	}
+
+	bounceReq := &ListMonkWebhook{
+		Email: webhookMessage.Data.Recepient,
+		CampaignUUID: campaignUUID,
+		Source: "api",
+		Type: "soft",
+		Meta: "{}",
+	}
+	// convert to listmonk type
+	switch(webhookMessage.Type){
+		case "message.bounced":
+			// handle as a soft bounce
+			log.Printf("Soft bounce!")
+			bounceReq.Type = "soft"
+		case "message.suppressed", "suppression.created", "message.failed":
+		    log.Printf("Hard Bounce!")
+			bounceReq.Type = "hard"
+	}
+
+	body, err := json.Marshal(bounceReq)
+	if err != nil{
+		log.Fatal("error processign webhook!")
+	}
+
+	auth := apiUsername + ":" + accessToken
+	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+
+	log.Printf("Sending bounce report to listmonk webhook %v \t %v\n", *bounceReq, body)
+	req, _ := http.NewRequest("POST", listmonkURL+"/webhooks/bounce", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		http.Error(w, "Unauthorized Request!\n"+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
 func main() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
 	http.HandleFunc("/proxy/send_campaign", withCORS(proxyHandler_SendCampaign))
 	http.HandleFunc("/proxy/sync_subs", withCORS(proxyHandler_SyncSubs))
 	http.HandleFunc("/proxy/unsubscribe", withCORS(UnsubscribeHandler))
+	http.HandleFunc("/proxy/on_bounce", withCORS(webhookHandler))
 
 	fmt.Println("Proxy server is running on port 8080")
 

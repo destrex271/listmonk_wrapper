@@ -133,3 +133,28 @@ type PostbackSubscriberRequest struct {
 	Attribs map[string]any `json:"attribs"`
 	PreCon  bool           `json:"preconfirm_subscriptions"`
 }
+
+type AhaSendWebhook struct {
+	Type string `json:"type"`
+	Timestamp string `json:"timestamp"`
+	WebhookID string `json:"webhook_id"`
+	Data AhaSendWebhookBody `json:"data"`
+}
+
+type AhaSendWebhookBody struct{
+	AccountID string `json:"account_id"`
+	Event string `json:"event"`
+	From string `json:"from"`
+	Recepient string `json:"recepient"`
+	Subject string `json:"subject"`
+	MessageIDHeader string `json:"message_id_header"`
+	ID string `json:"id"`
+}
+
+type ListMonkWebhook struct{
+	Email string `json:"email"`
+	CampaignUUID string `json:"campaign_uuid"`
+	Source string `json:"source"`
+	Type string `json:"hard"`
+	Meta string `json:"meta"`
+}

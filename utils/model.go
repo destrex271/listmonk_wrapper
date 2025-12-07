@@ -155,7 +155,7 @@ type ListMonkWebhook struct{
 	Email string `json:"email"`
 	CampaignUUID string `json:"campaign_uuid"`
 	Source string `json:"source"`
-	Type string `json:"hard"`
+	Type string `json:"type"`
 	Meta string `json:"meta"`
 }
 

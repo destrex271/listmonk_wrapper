@@ -301,8 +301,10 @@ func UnsubscribeHandler(w http.ResponseWriter, r *http.Request) {
 func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	var webhookMessage AhaSendWebhook
 
-	if err := json.NewDecoder(r.Body).Decode(&webhookMessage); err != nil{
-		log.Fatalf("unable to parse webhook message! %v\n", err)
+	if err := json.NewDecoder(r.Body).Decode(&webhookMessage); err != nil {
+		log.Printf("unable to parse webhook message! %v\n", err)
+		http.Error(w, "Invalid webhook payload", http.StatusBadRequest)
+		return
 	}
 
 	fmt.Printf("%v\n", webhookMessage)
@@ -310,52 +312,73 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	// fetch latest campaign with the given subject
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		log.Printf("Unable to connect to database: %v\n", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 	defer conn.Close(context.Background())
 
-	query := "SELECT uuid FROM campaigns WHERE subject = $1;"
+	query := "SELECT uuid FROM campaigns WHERE subject = $1 ORDER BY created_at DESC;"
 	var campaignUUID string
 
-
-	if err = conn.QueryRow(context.Background(), query, webhookMessage.Data.Subject).Scan(&campaignUUID); err != nil{
-		log.Printf("unable to find campaign %v\n", err)
+	if err = conn.QueryRow(context.Background(), query, webhookMessage.Data.Subject).Scan(&campaignUUID); err != nil {
+		log.Printf("unable to find campaign for subject '%s': %v\n", webhookMessage.Data.Subject, err)
+		// We can't attribute the bounce without a campaign, but we should still acknowledge the webhook.
+		json.NewEncoder(w).Encode(map[string]bool{"success": true})
+		return
 	}
 
 	bounceReq := &ListMonkWebhook{
-		Email: webhookMessage.Data.Recepient,
+		Email:        webhookMessage.Data.Recepient,
 		CampaignUUID: campaignUUID,
-		Source: "api",
-		Type: "soft",
-		Meta: "{}",
+		Source:       "api",
+		Type:         "soft", // Default
+		Meta:         "{}",
 	}
+
 	// convert to listmonk type
-	switch(webhookMessage.Type){
-		case "message.bounced":
-			// handle as a soft bounce
-			log.Printf("Soft bounce!")
-			bounceReq.Type = "soft"
-		case "message.suppressed", "suppression.created", "message.failed":
-		    log.Printf("Hard Bounce!")
-			bounceReq.Type = "hard"
+	switch webhookMessage.Type {
+	case "message.bounced":
+		// handle as a soft bounce
+		log.Printf("Soft bounce!")
+		bounceReq.Type = "soft"
+	case "message.suppressed", "suppression.created", "message.failed":
+		log.Printf("Hard Bounce!")
+		bounceReq.Type = "hard"
 	}
 
 	body, err := json.Marshal(bounceReq)
-	if err != nil{
-		log.Fatal("error processign webhook!")
+	if err != nil {
+		log.Printf("error marshalling bounce request: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	auth := apiUsername + ":" + accessToken
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 
 	log.Printf("Sending bounce report to listmonk webhook %v \t %v\n", *bounceReq, body)
-	req, _ := http.NewRequest("POST", listmonkURL+"/webhooks/bounce", bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", listmonkURL+"/webhooks/bounce", bytes.NewBuffer(body))
+	if err != nil {
+		log.Printf("error creating bounce request: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		http.Error(w, "Unauthorized Request!\n"+err.Error(), http.StatusUnauthorized)
+	if err != nil {
+		log.Printf("error sending bounce to listmonk: %v", err)
+		http.Error(w, "Error sending bounce report", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("listmonk bounce webhook returned non-200 status: %d. Body: %s", resp.StatusCode, string(bodyBytes))
+		http.Error(w, "Error from listmonk", resp.StatusCode)
 		return
 	}
 

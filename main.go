@@ -390,7 +390,9 @@ func webhookHandler_ZOHO(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&webhookMessage); err != nil {
 		log.Printf("unable to parse ZOHO webhook message! %v\n", err)
-		json.NewEncoder(w).Encode(map[string]bool{"success": true})
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 		return
 	}
 
@@ -399,7 +401,9 @@ func webhookHandler_ZOHO(w http.ResponseWriter, r *http.Request) {
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err)
-		json.NewEncoder(w).Encode(map[string]bool{"success": true})
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 		return
 	}
 	defer conn.Close(context.Background())
@@ -465,7 +469,10 @@ func webhookHandler_ZOHO(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 func main() {

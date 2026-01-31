@@ -48,7 +48,7 @@ var (
 	asp_username          = os.Getenv("ASP_USER_NAME")
 	asp_passwd            = os.Getenv("ASP_PASSWD")
 	asp_server            = os.Getenv("ASP_SERVER")
-	asp_port              = os.Getenv("ASP_PORT")
+	asp_database 		  = os.Getenv("ASP_DATABASE")
 
 	blockListDropTime, _ = strconv.Atoi(os.Getenv("BLOCKLIST_DROP_TIME_HOURS"))
 	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
@@ -84,7 +84,7 @@ func markBlockListInSource() {
 	}
 
 	// Mark blocklisted subsribers from ASP DB
-	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s", asp_server, asp_username, asp_passwd, asp_port))
+	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;", asp_server, asp_database, asp_username, asp_passwd))
 	if err != nil {
 		log.Fatal(err)
 	}

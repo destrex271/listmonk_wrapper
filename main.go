@@ -47,6 +47,8 @@ var (
 	original_database_url = os.Getenv("ASP_DATABASE_URL")
 	asp_username          = os.Getenv("ASP_USER_NAME")
 	asp_passwd            = os.Getenv("ASP_PASSWD")
+	asp_server            = os.Getenv("ASP_SERVER")
+	asp_port              = os.Getenv("ASP_PORT")
 
 	blockListDropTime, _ = strconv.Atoi(os.Getenv("BLOCKLIST_DROP_TIME_HOURS"))
 	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
@@ -55,7 +57,7 @@ var (
 
 func markBlockListInSource() {
 	//
-	log.Print("Deleting blocklisted subscribers from databases")
+	log.Print("Marking blocklisted subscribers in source database")
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err)
@@ -82,7 +84,7 @@ func markBlockListInSource() {
 	}
 
 	// Mark blocklisted subsribers from ASP DB
-	db, err := sql.Open("sqlserver", original_database_url)
+	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s", asp_server, asp_username, asp_passwd, asp_port))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,6 +94,8 @@ func markBlockListInSource() {
 		_, err := db.Exec("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid=%s", email)
 		if err != nil {
 			log.Printf("err: %w\n", err)
+		}else{
+			log.Printf("%s marked as blocklisted", email)
 		}
 	}
 }

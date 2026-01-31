@@ -10,6 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	// "time"
 
 	// "io"
@@ -51,13 +53,12 @@ var (
 	mainWebsiteUnsubURL  = os.Getenv("MAIN_WEBSITE_UNSUB_LINK")
 )
 
-func dropBlocklist() {
+func markBlockListInSource() {
 	//
 	log.Print("Deleting blocklisted subscribers from databases")
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		log.Printf("Unable to connect to database: %v\n", err)
 	}
 	defer conn.Close(context.Background())
 
@@ -65,8 +66,8 @@ func dropBlocklist() {
 	query := "SELECT email FROM subscribers WHERE status = 'blocklisted';"
 	rows, err := conn.Query(context.Background(), query)
 	if err != nil {
-		log.Fatalf("Query failed: %v\n", err)
-		os.Exit(1)
+		log.Printf("Query failed: %v\n", err)
+		return
 	}
 	defer rows.Close()
 
@@ -75,12 +76,12 @@ func dropBlocklist() {
 		var email string
 		if err := rows.Scan(&email); err != nil {
 			fmt.Fprintf(os.Stderr, "Scan failed: %v\n", err)
-			os.Exit(1)
+			return
 		}
 		subscribers = append(subscribers, email)
 	}
 
-	// delete blocklisted subsribers from ASP DB
+	// Mark blocklisted subsribers from ASP DB
 	db, err := sql.Open("sqlserver", original_database_url)
 	if err != nil {
 		log.Fatal(err)
@@ -88,22 +89,11 @@ func dropBlocklist() {
 	defer db.Close()
 
 	for _, email := range subscribers {
-		_, err := db.Exec("DELETE FROM subscribers WHERE emailid = @p1", email)
+		_, err := db.Exec("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid=%s", email)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("err: %w\n", err)
 		}
 	}
-
-	// Delete blocklisted subscribers in listmonk
-	log.Println(subscribers)
-	_, err = conn.Exec(context.Background(), "DELETE FROM subscribers WHERE email = ANY($1)", subscribers)
-
-	if err != nil {
-		log.Fatal("unable to delete subscriber from db")
-	}
-
-	log.Println("Successfully removed: ", subscribers)
-
 }
 
 func syncSubscribers() {
@@ -499,6 +489,14 @@ func main() {
 	// 		time.Sleep(time.Duration(blockListDropTime) * time.Hour)
 	// 	}
 	// }()
+
+	// Go-Routine to run blocklist job every 24 hours.
+	go func() {
+		for true{
+			markBlockListInSource()
+			time.Sleep(time.Duration(blockListDropTime) * time.Hour)
+		}
+	} ()
 
 	log.Fatal(http.ListenAndServe(port, nil))
 }

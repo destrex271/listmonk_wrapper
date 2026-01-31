@@ -50,6 +50,8 @@ var (
 	asp_server            = os.Getenv("ASP_SERVER")
 	asp_database 		  = os.Getenv("ASP_DATABASE")
 
+	cronEnabled = os.Getenv("CRON_ENABLED")
+
 	blockListDropTime, _ = strconv.Atoi(os.Getenv("BLOCKLIST_DROP_TIME_HOURS"))
 	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
 	mainWebsiteUnsubURL  = os.Getenv("MAIN_WEBSITE_UNSUB_LINK")
@@ -497,6 +499,9 @@ func main() {
 	// Go-Routine to run blocklist job every 24 hours.
 	go func() {
 		for true{
+			if cronEnabled != "1"{
+				continue
+			}
 			markBlockListInSource()
 			time.Sleep(time.Duration(blockListDropTime) * time.Hour)
 		}

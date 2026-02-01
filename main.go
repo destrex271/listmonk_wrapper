@@ -86,7 +86,7 @@ func markBlockListInSource() {
 	}
 
 	// Mark blocklisted subsribers from ASP DB
-	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;", asp_server, asp_database, asp_username, asp_passwd))
+	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;Encrypt=True;TrustServerCertificate=True;", asp_server, asp_database, asp_username, asp_passwd))
 	if err != nil {
 		log.Fatal(err)
 	}

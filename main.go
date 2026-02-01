@@ -499,6 +499,7 @@ func main() {
 	// Go-Routine to run blocklist job every 24 hours.
 	go func() {
 		for true{
+			log.Printf("Cron value is : %s\n", cronEnabled)
 			if cronEnabled != "1"{
 				continue
 			}

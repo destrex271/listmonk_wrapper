@@ -479,7 +479,7 @@ func main() {
 	http.HandleFunc("/proxy/on_bounce", withCORS(webhookHandler))
 	http.HandleFunc("/proxy/on_bounce_zoho", withCORS(webhookHandler_ZOHO))
 
-	fmt.Println("Proxy server is running on port 8080")
+	fmt.Printf("Proxy server is running on port %d", port)
 
 	// go func() {
 	// 	for true {

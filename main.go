@@ -94,7 +94,7 @@ func markBlockListInSource() {
 
 	for _, email := range subscribers {
 		log.Printf("Checking email in origin DB %s", email)
-		_, err := db.Exec("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid=?", email)
+		_, err := db.Exec("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid=$1 AND activeyn!='B'", email)
 		if err != nil {
 			log.Printf("err: %v\n", err)
 		}else{

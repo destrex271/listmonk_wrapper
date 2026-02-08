@@ -583,24 +583,30 @@ func main() {
 
 	// Go-Routine to run blocklist job every 24 hours.
 	go func() {
-		for true {
-			log.Printf("Cron value is : %s\n", cronEnabled)
-			if cronEnabled != "1" {
-				continue
-			}
-			markBlockListInSource()
-			time.Sleep(time.Duration(blockListDropTime) * time.Hour)
-		}
-	}()
+		ticker := time.NewTicker(time.Duration(blockListDropTime*2) * time.Hour)
+		defer ticker.Stop()
 
-	go func() {
-		for true {
+		for {
 			log.Printf("Cron value is: %s\n", cronEnabled)
 			if cronEnabled != "1" {
 				continue
 			}
 			updateVerificationStatusOnSource()
-			time.Sleep(time.Duration(blockListDropTime*2) * time.Hour)
+			<-ticker.C
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(blockListDropTime) * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			log.Printf("Cron value is : %s for blocklist job\n", cronEnabled)
+			if cronEnabled != "1" {
+				continue
+			}
+			markBlockListInSource()
+			<-ticker.C
 		}
 	}()
 

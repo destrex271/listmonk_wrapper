@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	// "time"
@@ -48,7 +49,7 @@ var (
 	asp_username          = os.Getenv("ASP_USER_NAME")
 	asp_passwd            = os.Getenv("ASP_PASSWD")
 	asp_server            = os.Getenv("ASP_SERVER")
-	asp_database 		  = os.Getenv("ASP_DATABASE")
+	asp_database          = os.Getenv("ASP_DATABASE")
 
 	cronEnabled = os.Getenv("CRON_ENABLED")
 
@@ -56,6 +57,90 @@ var (
 	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
 	mainWebsiteUnsubURL  = os.Getenv("MAIN_WEBSITE_UNSUB_LINK")
 )
+
+func sendBatchupdates(value string, emailids []string) {
+	// Mark blocklisted subsribers from ASP DB
+	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;Encrypt=True;TrustServerCertificate=True;", asp_server, asp_database, asp_username, asp_passwd))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	// Build a batch update query
+	if len(emailids) > 0 {
+		// Create a table-valued parameter or use IN clause
+		args := make([]string, len(emailids))
+
+		for i, email := range emailids {
+			args[i] = "'" + email + "'"
+		}
+
+		query := fmt.Sprintf(
+			"UPDATE t_newsletter_subscriber SET lmonk_verf_status='%s' WHERE emailid IN (%s) AND activeyn!='B'",
+			value,
+			strings.Join(args, ","),
+		)
+
+		result, err := db.Exec(query)
+		if err != nil {
+			log.Printf("Batch update error: %v\n", err)
+		} else {
+			rowsAffected, _ := result.RowsAffected()
+			log.Printf("%d subscribers updated to %s", rowsAffected, value)
+		}
+	}
+}
+
+func updateVerificationStatusOnSource() {
+	log.Print("Fetching verified and unverified user emails..")
+
+	conn, err := pgx.Connect(context.Background(), database_url)
+	if err != nil {
+		log.Printf("Unable to connect to database: %v\n", err)
+	}
+	defer conn.Close(context.Background())
+
+	queryVerf := "select email from subscribers where (attribs->>'verified')::boolean = true;"
+
+	rows, err := conn.Query(context.Background(), queryVerf)
+	if err != nil {
+		log.Printf("Query failed: %v\n", err)
+		return
+	}
+	defer rows.Close()
+
+	var verifiedSubscribers []string
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			fmt.Fprintf(os.Stderr, "Scan failed: %v\n", err)
+			return
+		}
+		verifiedSubscribers = append(verifiedSubscribers, email)
+	}
+
+	queryUnverf := "select email from subscribers where (attribs->>'verified')::boolean = false;"
+	rowsUv, err := conn.Query(context.Background(), queryUnverf)
+	if err != nil {
+		log.Printf("Query failed: %v\n", err)
+		return
+	}
+	defer rowsUv.Close()
+
+	var unverifiedSubscribers []string
+	for rowsUv.Next() {
+		var email string
+		if err := rowsUv.Scan(&email); err != nil {
+			fmt.Fprintf(os.Stderr, "Scan failed: %v\n", err)
+			return
+		}
+		unverifiedSubscribers = append(unverifiedSubscribers, email)
+	}
+
+	sendBatchupdates("V", verifiedSubscribers)
+	sendBatchupdates("U", unverifiedSubscribers)
+
+	fmt.Println("updated all subscriber status on listmonk")
+}
 
 func markBlockListInSource() {
 	//
@@ -97,7 +182,7 @@ func markBlockListInSource() {
 		_, err := db.Exec("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid=$1 AND activeyn!='B'", email)
 		if err != nil {
 			log.Printf("err: %v\n", err)
-		}else{
+		} else {
 			log.Printf("%s marked as blocklisted", email)
 		}
 	}
@@ -466,7 +551,6 @@ func webhookHandler_ZOHO(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
@@ -499,15 +583,26 @@ func main() {
 
 	// Go-Routine to run blocklist job every 24 hours.
 	go func() {
-		for true{
+		for true {
 			log.Printf("Cron value is : %s\n", cronEnabled)
-			if cronEnabled != "1"{
+			if cronEnabled != "1" {
 				continue
 			}
 			markBlockListInSource()
 			time.Sleep(time.Duration(blockListDropTime) * time.Hour)
 		}
-	} ()
+	}()
+
+	go func() {
+		for true {
+			log.Printf("Cron value is: %s\n", cronEnabled)
+			if cronEnabled != "1" {
+				continue
+			}
+			updateVerificationStatusOnSource()
+			time.Sleep(time.Duration(blockListDropTime*2) * time.Hour)
+		}
+	}()
 
 	log.Fatal(http.ListenAndServe(port, nil))
 }

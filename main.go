@@ -322,6 +322,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request) {
 				respList.Body.Close()
 
 				listName := strings.ToLower(listResp.Data.Name)
+				campaignReq["from_email"] = "admin@bihariji.org"
 				if strings.Contains(listName, "unverified") {
 					campaignReq["messenger"] = "email-zoho-zepto"
 					log.Printf("Set messenger to email-unverified based on list: %s", listResp.Data.Name)

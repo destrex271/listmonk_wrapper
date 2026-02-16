@@ -39,7 +39,7 @@ var (
 	campaignEndpoint      = "http://" + os.Getenv("LISTMONK_URL") + "/api/campaigns"
 	listEndpoint          = "http://" + os.Getenv("LISTMONK_URL") + "/api/lists"
 	membershipEndpoint    = "http://" + os.Getenv("LISTMONK_URL") + "/api/subscribers/lists"
-	subsEndpoinsend_t     = "http://" + os.Getenv("LISTMONK_URL") + "/api/subscribers"
+	subsEndpoint          = "http://" + os.Getenv("LISTMONK_URL") + "/api/subscribers"
 	hindiListId3m, _      = strconv.Atoi(os.Getenv("HINDI_LIST_3M"))
 	englishListId3m, _    = strconv.Atoi(os.Getenv("ENGLISH_LIST_3M"))
 	hindiListId1m, _      = strconv.Atoi(os.Getenv("HINDI_LIST_1M"))

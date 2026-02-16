@@ -285,8 +285,65 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request) {
 	auth := apiUsername + ":" + accessToken
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 
+	// 1. Parse the request body to extract list IDs and set messenger
+	var campaignReq map[string]interface{}
+	if err := json.Unmarshal(body, &campaignReq); err != nil {
+		http.Error(w, "Invalid JSON body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Determine messenger based on list names
+	if rawLists, ok := campaignReq["lists"]; ok {
+		if listIDs, ok := rawLists.([]interface{}); ok {
+			for _, rawID := range listIDs {
+				listID, ok := rawID.(float64)
+				if !ok {
+					continue
+				}
+				// Fetch list details from listmonk
+				reqList, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/lists/%d", listmonkURL, int(listID)), nil)
+				reqList.Header.Set("Authorization", authHeader)
+				reqList.Header.Set("Content-Type", "application/json")
+				respList, err := http.DefaultClient.Do(reqList)
+				if err != nil || respList.StatusCode != 200 {
+					log.Printf("Failed to fetch list %d: %v", int(listID), err)
+					continue
+				}
+				var listResp struct {
+					Data struct {
+						Name string `json:"name"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(respList.Body).Decode(&listResp); err != nil {
+					respList.Body.Close()
+					log.Printf("Failed to decode list %d response: %v", int(listID), err)
+					continue
+				}
+				respList.Body.Close()
+
+				listName := strings.ToLower(listResp.Data.Name)
+				if strings.Contains(listName, "unverified") {
+					campaignReq["messenger"] = "email-zoho-zepto"
+					log.Printf("Set messenger to email-unverified based on list: %s", listResp.Data.Name)
+					break
+				} else if strings.Contains(listName, "verified") || strings.Contains(listName, "test"){
+					campaignReq["messenger"] = "email-verified"
+					log.Printf("Set messenger to email-verified based on list: %s", listResp.Data.Name)
+					break
+				}
+			}
+		}
+	}
+
+	// Re-marshal the modified request body
+	modifiedBody, err := json.Marshal(campaignReq)
+	if err != nil {
+		http.Error(w, "Failed to marshal modified request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// 2. Create the campaign
-	reqCreate, _ := http.NewRequest("POST", listmonkURL+"/api/campaigns", bytes.NewBuffer(body))
+	reqCreate, _ := http.NewRequest("POST", listmonkURL+"/api/campaigns", bytes.NewBuffer(modifiedBody))
 	reqCreate.Header.Set("Authorization", authHeader)
 	reqCreate.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(reqCreate)
@@ -295,12 +352,6 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-
-	// bodyBytes, err := io.ReadAll(resp.Body)
-	// if err != nil {
-	// 	log.Fatal("Failed to read response body:", err)
-	// }
-	// fmt.Println("Raw response body:", string(bodyBytes))
 
 	var created struct {
 		Data CRCampaign `json:"data"`
@@ -326,7 +377,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request) {
 	}
 	defer respStatus.Body.Close()
 
-	// 5. Respond success
+	// 4. Respond success
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

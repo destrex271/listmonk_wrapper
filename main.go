@@ -136,7 +136,7 @@ func generateUnsubscribeCodesForSubscribers() {
 	for _, s := range subsToUpdate {
 		unsubCode := generateUnsubCode(s.email, strconv.Itoa(s.id))
 		log.Printf("Generated unsub code for subscriber %d (%s): %s", s.id, s.email, unsubCode)
-		
+
 		updateQuery := fmt.Sprintf("UPDATE subscribers SET attribs = coalesce(attribs, '{}'::jsonb) || jsonb_build_object('unsub_code', '%s'::text) WHERE id = %d", unsubCode, s.id)
 		_, err := conn.Exec(context.Background(), updateQuery)
 		if err != nil {
@@ -731,22 +731,10 @@ func main() {
 			if cronEnabled != "1" {
 				continue
 			}
+			log.Println("Running generateUnsubscribeCodesForSubscribers job...")
+			generateUnsubscribeCodesForSubscribers()
 			updateVerificationStatusOnSource()
 			markBlockListInSource()
-			<-ticker.C
-		}
-	}()
-
-	// Go-Routine to run unsubscribe code generation every 12 hours.
-	go func() {
-		ticker := time.NewTicker(12 * time.Hour)
-		defer ticker.Stop()
-
-		for {
-			if cronEnabled == "1" {
-				log.Println("Running generateUnsubscribeCodesForSubscribers job...")
-				generateUnsubscribeCodesForSubscribers()
-			}
 			<-ticker.C
 		}
 	}()

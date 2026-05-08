@@ -1,28 +1,22 @@
 package main
 
 import (
-
-	// "encoding/base64"
-
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
-
-	// "time"
-
-	// "io"
+	"io"
 	"log"
 	"net/http"
-
-	// "net/url"
-	"io"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
 	. "github.com/destrex271/listmonk_proxy/utils"
@@ -56,7 +50,85 @@ var (
 	blockListDropTime, _ = strconv.Atoi(os.Getenv("BLOCKLIST_DROP_TIME_HOURS"))
 	syncSubsTime, _      = strconv.Atoi(os.Getenv("SYNC_SUBS_TIME_HOURS"))
 	mainWebsiteUnsubURL  = os.Getenv("MAIN_WEBSITE_UNSUB_LINK")
+	aesEncryptionKey     = os.Getenv("AES_ENCRYPTION_KEY")
+	aesIV                = os.Getenv("AES_IV")
 )
+
+func pkcs7Pad(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	padText := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(data, padText...)
+}
+
+func generateUnsubCode(email, subscriberId string) string {
+	plainText := email + "|newsletter|" + subscriberId + "|"
+
+	key := []byte(aesEncryptionKey)
+	iv := []byte(aesIV)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Printf("Error creating cipher: %v", err)
+		return ""
+	}
+
+	paddedData := pkcs7Pad([]byte(plainText), aes.BlockSize)
+	encryptedBytes := make([]byte, len(paddedData))
+
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(encryptedBytes, paddedData)
+
+	base64EncodedStr := base64.StdEncoding.EncodeToString(encryptedBytes)
+	urlEncodedStr := url.QueryEscape(base64EncodedStr)
+
+	return urlEncodedStr
+}
+
+func generateUnsubscribeCodesForSubscribers() {
+	conn, err := pgx.Connect(context.Background(), database_url)
+	if err != nil {
+		log.Printf("Unable to connect to database: %v\n", err)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	query := "SELECT id, email FROM subscribers WHERE attribs->>'unsub_code' IS NULL"
+	rows, err := conn.Query(context.Background(), query)
+	if err != nil {
+		log.Printf("Query failed: %v\n", err)
+		return
+	}
+
+	type sub struct {
+		id    int
+		email string
+	}
+	var subsToUpdate []sub
+
+	for rows.Next() {
+		var s sub
+		if err := rows.Scan(&s.id, &s.email); err != nil {
+			log.Printf("Scan failed: %v\n", err)
+			continue
+		}
+		subsToUpdate = append(subsToUpdate, s)
+	}
+	rows.Close()
+
+	if len(subsToUpdate) == 0 {
+		return
+	}
+
+	for _, s := range subsToUpdate {
+		unsubCode := generateUnsubCode(s.email, strconv.Itoa(s.id))
+		updateQuery := "UPDATE subscribers SET attribs = coalesce(attribs, '{}'::jsonb) || jsonb_build_object('unsub_code', $1::text) WHERE id = $2"
+		_, err := conn.Exec(context.Background(), updateQuery, unsubCode, s.id)
+		if err != nil {
+			log.Printf("Failed to update subscriber %d with unsub_code: %v\n", s.id, err)
+		}
+	}
+	log.Printf("Successfully generated unsub_codes for %d subscribers", len(subsToUpdate))
+}
 
 func sendBatchupdates(value string, emailids []string) {
 	// Mark blocklisted subsribers from ASP DB
@@ -327,7 +399,7 @@ func proxyHandler_SendCampaign(w http.ResponseWriter, r *http.Request) {
 					campaignReq["messenger"] = "email-zoho-zepto"
 					log.Printf("Set messenger to email-unverified based on list: %s", listResp.Data.Name)
 					break
-				} else if strings.Contains(listName, "verified") || strings.Contains(listName, "test"){
+				} else if strings.Contains(listName, "verified") || strings.Contains(listName, "test") {
 					campaignReq["messenger"] = "email-verified"
 					log.Printf("Set messenger to email-verified based on list: %s", listResp.Data.Name)
 					break
@@ -645,6 +717,20 @@ func main() {
 			}
 			updateVerificationStatusOnSource()
 			markBlockListInSource()
+			<-ticker.C
+		}
+	}()
+
+	// Go-Routine to run unsubscribe code generation every 12 hours.
+	go func() {
+		ticker := time.NewTicker(12 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			if cronEnabled == "1" {
+				log.Println("Running generateUnsubscribeCodesForSubscribers job...")
+				generateUnsubscribeCodesForSubscribers()
+			}
 			<-ticker.C
 		}
 	}()

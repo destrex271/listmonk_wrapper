@@ -121,8 +121,10 @@ func generateUnsubscribeCodesForSubscribers() {
 
 	for _, s := range subsToUpdate {
 		unsubCode := generateUnsubCode(s.email, strconv.Itoa(s.id))
-		updateQuery := "UPDATE subscribers SET attribs = coalesce(attribs, '{}'::jsonb) || jsonb_build_object('unsub_code', $1::text) WHERE id = $2"
-		_, err := conn.Exec(context.Background(), updateQuery, unsubCode, s.id)
+		log.Printf("Generated unsub code for subscriber %d (%s): %s", s.id, s.email, unsubCode)
+		
+		updateQuery := fmt.Sprintf("UPDATE subscribers SET attribs = coalesce(attribs, '{}'::jsonb) || jsonb_build_object('unsub_code', '%s'::text) WHERE id = %d", unsubCode, s.id)
+		_, err := conn.Exec(context.Background(), updateQuery)
 		if err != nil {
 			log.Printf("Failed to update subscriber %d with unsub_code: %v\n", s.id, err)
 		}

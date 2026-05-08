@@ -7,6 +7,7 @@ import (
 	"crypto/cipher"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -60,11 +61,24 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 	return append(data, padText...)
 }
 
+func parseHexOrBytes(s string, expected int) []byte {
+	if b, err := hex.DecodeString(s); err == nil && len(b) >= expected {
+		return b[:expected]
+	}
+	b := []byte(s)
+	if len(b) >= expected {
+		return b[:expected]
+	}
+	padded := make([]byte, expected)
+	copy(padded, b)
+	return padded
+}
+
 func generateUnsubCode(email, subscriberId string) string {
 	plainText := email + "|newsletter|" + subscriberId + "|"
 
-	key := []byte(aesEncryptionKey)
-	iv := []byte(aesIV)
+	key := parseHexOrBytes(aesEncryptionKey, 32)
+	iv := parseHexOrBytes(aesIV, 16)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {

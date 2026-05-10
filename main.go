@@ -284,9 +284,30 @@ func syncSubscribers() {
 	}
 	defer conn.Close(context.Background())
 
+	var runningCount int
+	err = conn.QueryRow(context.Background(), "SELECT count(*) FROM campaigns WHERE status = 'running'").Scan(&runningCount)
+	if err != nil {
+		log.Printf("Error checking for running campaigns: %v\n", err)
+		return
+	}
+
+	if runningCount > 0 {
+		log.Println("A campaign is currently running. Skipping syncSubscribers.")
+		return
+	}
+
 	log.Println("Synchronizing subscriber lists...")
 
-	move_verified := "SELECT mark_verified_on_view();"
+	var latestCampaignDate time.Time
+	err = conn.QueryRow(context.Background(), "SELECT created_at FROM campaigns ORDER BY created_at DESC LIMIT 1").Scan(&latestCampaignDate)
+	var move_verified string
+	if err != nil {
+		log.Printf("Error fetching latest campaign date: %v\n", err)
+		return
+	} else {
+		move_verified = fmt.Sprintf("SELECT mark_verified_on_view('%s');", latestCampaignDate.Format("2006-01-02"))
+	}
+
 	check_bounce_threshold := "SELECT check_bounce_threshold();"
 	sync_subs := "SELECT sync_all_subscribers_to_verified_status();"
 
@@ -304,9 +325,6 @@ func syncSubscribers() {
 		return
 	}
 
-	// TODO: For any bounced subs that need to be deleted, take
-	// action on ASP Server DB
-
 	// take action on verif and unverif by moving them around lists
 	_, err = conn.Exec(context.Background(), sync_subs)
 	if err != nil {
@@ -315,7 +333,6 @@ func syncSubscribers() {
 	}
 
 	log.Println("Successfully synced subsribers")
-
 }
 
 func withCORS(handler http.HandlerFunc) http.HandlerFunc {
@@ -731,6 +748,8 @@ func main() {
 			if cronEnabled != "1" {
 				continue
 			}
+			log.Println("Running sync subscribers job to move verified and unverified subscribers...")
+			syncSubscribers()
 			log.Println("Running generateUnsubscribeCodesForSubscribers job...")
 			generateUnsubscribeCodesForSubscribers()
 			updateVerificationStatusOnSource()

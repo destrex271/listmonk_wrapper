@@ -187,6 +187,7 @@ func updateVerificationStatusOnSource() {
 		return
 	}
 	defer conn.Close(context.Background())
+	log.Print("Connected to Postgres. Executing metadata query...")
 
 	// Fetch email, ID (list_subscriber_id), list_ids (comma separated), and verified status
 	query := `
@@ -206,6 +207,7 @@ func updateVerificationStatusOnSource() {
 		return
 	}
 	defer rows.Close()
+	log.Print("Postgres query finished. Scanning results...")
 
 	type subData struct {
 		Email    string
@@ -225,6 +227,7 @@ func updateVerificationStatusOnSource() {
 		s.Verified = verified.Bool
 		subscribers = append(subscribers, s)
 	}
+	log.Printf("Fetched %d subscribers. Connecting to MSSQL...", len(subscribers))
 
 	if len(subscribers) == 0 {
 		return

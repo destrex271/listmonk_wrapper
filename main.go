@@ -179,53 +179,94 @@ func sendBatchupdates(value string, emailids []string) {
 }
 
 func updateVerificationStatusOnSource() {
-	log.Print("Fetching verified and unverified user emails..")
+	log.Print("Fetching subscriber metadata and verification status..")
 
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err)
+		return
 	}
 	defer conn.Close(context.Background())
 
-	queryVerf := "select email from subscribers where (attribs->>'verified')::boolean = true;"
+	// Fetch email, ID (list_subscriber_id), list_ids (comma separated), and verified status
+	query := `
+		SELECT 
+			s.email, 
+			s.id, 
+			COALESCE(string_agg(sl.list_id::text, ','), '') as list_ids,
+			(s.attribs->>'verified')::boolean as verified
+		FROM subscribers s
+		LEFT JOIN subscriber_lists sl ON s.id = sl.subscriber_id
+		GROUP BY s.email, s.id, s.attribs->>'verified'
+	`
 
-	rows, err := conn.Query(context.Background(), queryVerf)
+	rows, err := conn.Query(context.Background(), query)
 	if err != nil {
 		log.Printf("Query failed: %v\n", err)
 		return
 	}
 	defer rows.Close()
 
-	var verifiedSubscribers []string
-	for rows.Next() {
-		var email string
-		if err := rows.Scan(&email); err != nil {
-			fmt.Fprintf(os.Stderr, "Scan failed: %v\n", err)
-			return
-		}
-		verifiedSubscribers = append(verifiedSubscribers, email)
+	type subData struct {
+		Email    string
+		ID       int
+		ListIDs  string
+		Verified bool
 	}
 
-	queryUnverf := "select email from subscribers where (attribs->>'verified')::boolean = false;"
-	rowsUv, err := conn.Query(context.Background(), queryUnverf)
-	if err != nil {
-		log.Printf("Query failed: %v\n", err)
+	var subscribers []subData
+	for rows.Next() {
+		var s subData
+		var verified sql.NullBool
+		if err := rows.Scan(&s.Email, &s.ID, &s.ListIDs, &verified); err != nil {
+			log.Printf("Scan failed: %v\n", err)
+			continue
+		}
+		s.Verified = verified.Bool
+		subscribers = append(subscribers, s)
+	}
+
+	if len(subscribers) == 0 {
 		return
 	}
-	defer rowsUv.Close()
 
-	var unverifiedSubscribers []string
-	for rowsUv.Next() {
-		var email string
-		if err := rowsUv.Scan(&email); err != nil {
-			fmt.Fprintf(os.Stderr, "Scan failed: %v\n", err)
-			return
+	// MSSQL Connection for metadata updates
+	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;Encrypt=True;TrustServerCertificate=True;", asp_server, asp_database, asp_username, asp_passwd))
+	if err != nil {
+		log.Printf("Failed to connect to MSSQL: %v", err)
+	} else {
+		defer db.Close()
+
+		var verifiedEmails []string
+		var unverifiedEmails []string
+		metadataUpdatedCount := 0
+
+		for _, s := range subscribers {
+			if s.Verified {
+				verifiedEmails = append(verifiedEmails, s.Email)
+			} else {
+				unverifiedEmails = append(unverifiedEmails, s.Email)
+			}
+
+			// Update metadata (list_subscriber_id and list_id) if missing
+			updateQuery := fmt.Sprintf("UPDATE t_newsletter_subscriber SET list_subscriber_id = %d, list_id = '%s' WHERE emailid = '%s' AND (list_subscriber_id IS NULL OR list_id IS NULL)", s.ID, s.ListIDs, s.Email)
+			res, err := db.Exec(updateQuery)
+			if err != nil {
+				log.Printf("Error updating metadata for %s: %v", s.Email, err)
+			} else {
+				rowsAffected, _ := res.RowsAffected()
+				if rowsAffected > 0 {
+					metadataUpdatedCount++
+				}
+			}
 		}
-		unverifiedSubscribers = append(unverifiedSubscribers, email)
-	}
 
-	sendBatchupdates("V", verifiedSubscribers)
-	sendBatchupdates("U", unverifiedSubscribers)
+		log.Printf("Metadata updated for %d subscribers", metadataUpdatedCount)
+
+		// Still perform batch updates for status as it's more efficient
+		sendBatchupdates("V", verifiedEmails)
+		sendBatchupdates("U", unverifiedEmails)
+	}
 
 	fmt.Println("updated all subscriber status on listmonk")
 }

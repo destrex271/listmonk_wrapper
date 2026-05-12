@@ -230,44 +230,65 @@ func updateVerificationStatusOnSource() {
 		return
 	}
 
-	// MSSQL Connection for metadata updates
+	// MSSQL Connection
 	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;Encrypt=True;TrustServerCertificate=True;", asp_server, asp_database, asp_username, asp_passwd))
 	if err != nil {
 		log.Printf("Failed to connect to MSSQL: %v", err)
-	} else {
-		defer db.Close()
+		return
+	}
+	defer db.Close()
 
-		var verifiedEmails []string
-		var unverifiedEmails []string
-		metadataUpdatedCount := 0
+	batchSize := 500
+	totalUpdated := 0
 
-		for _, s := range subscribers {
+	for i := 0; i < len(subscribers); i += batchSize {
+		end := i + batchSize
+		if end > len(subscribers) {
+			end = len(subscribers)
+		}
+		batch := subscribers[i:end]
+
+		var values []string
+		for _, s := range batch {
+			status := "U"
 			if s.Verified {
-				verifiedEmails = append(verifiedEmails, s.Email)
-			} else {
-				unverifiedEmails = append(unverifiedEmails, s.Email)
+				status = "V"
 			}
-
-			// Update metadata (list_subscriber_id and list_id) if missing
-			updateQuery := fmt.Sprintf("UPDATE t_newsletter_subscriber SET list_subscriber_id = %d, list_id = '%s' WHERE emailid = '%s' AND (list_subscriber_id IS NULL OR list_id IS NULL)", s.ID, s.ListIDs, s.Email)
-			res, err := db.Exec(updateQuery)
-			if err != nil {
-				log.Printf("Error updating metadata for %s: %v", s.Email, err)
-			} else {
-				rowsAffected, _ := res.RowsAffected()
-				if rowsAffected > 0 {
-					metadataUpdatedCount++
-				}
-			}
+			// Escape single quotes for SQL safety
+			safeEmail := strings.ReplaceAll(s.Email, "'", "''")
+			safeListIDs := strings.ReplaceAll(s.ListIDs, "'", "''")
+			values = append(values, fmt.Sprintf("(%d, '%s', '%s', '%s')", s.ID, safeListIDs, safeEmail, status))
 		}
 
-		log.Printf("Metadata updated for %d subscribers", metadataUpdatedCount)
+		if len(values) == 0 {
+			continue
+		}
 
-		// Still perform batch updates for status as it's more efficient
-		sendBatchupdates("V", verifiedEmails)
-		sendBatchupdates("U", unverifiedEmails)
+		// Optimized batch update using JOIN and VALUES clause
+		// COALESCE ensures list_subscriber_id and list_id are only updated if they were previously NULL
+		updateQuery := fmt.Sprintf(`
+			UPDATE target
+			SET target.list_subscriber_id = COALESCE(target.list_subscriber_id, source.list_subscriber_id),
+			    target.list_id = COALESCE(target.list_id, source.list_id),
+			    target.lmonk_verf_status = source.lmonk_verf_status
+			FROM t_newsletter_subscriber AS target
+			JOIN (
+				VALUES %s
+			) AS source (list_subscriber_id, list_id, emailid, lmonk_verf_status)
+			ON target.emailid = source.emailid
+			WHERE target.activeyn != 'B'
+		`, strings.Join(values, ","))
+
+		res, err := db.Exec(updateQuery)
+		if err != nil {
+			log.Printf("Error in batch update (%d-%d): %v", i, end, err)
+		} else {
+			rowsAffected, _ := res.RowsAffected()
+			totalUpdated += int(rowsAffected)
+		}
 	}
 
+	log.Printf("Successfully synced %d subscribers in source database", totalUpdated)
 	fmt.Println("updated all subscriber status on listmonk")
 }
 
@@ -277,6 +298,7 @@ func markBlockListInSource() {
 	conn, err := pgx.Connect(context.Background(), database_url)
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err)
+		return
 	}
 	defer conn.Close(context.Background())
 
@@ -299,20 +321,37 @@ func markBlockListInSource() {
 		subscribers = append(subscribers, email)
 	}
 
-	// Mark blocklisted subsribers from ASP DB
+	if len(subscribers) == 0 {
+		return
+	}
+
+	// Mark blocklisted subscribers from ASP DB
 	db, err := sql.Open("mssql", fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;Encrypt=True;TrustServerCertificate=True;", asp_server, asp_database, asp_username, asp_passwd))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	for _, email := range subscribers {
-		log.Printf("Checking email in origin DB %s", email)
-		_, err := db.Exec("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid=$1 AND activeyn!='B'", email)
+	batchSize := 1000
+	for i := 0; i < len(subscribers); i += batchSize {
+		end := i + batchSize
+		if end > len(subscribers) {
+			end = len(subscribers)
+		}
+		batch := subscribers[i:end]
+
+		args := make([]string, len(batch))
+		for j, email := range batch {
+			args[j] = "'" + strings.ReplaceAll(email, "'", "''") + "'"
+		}
+
+		query := fmt.Sprintf("UPDATE t_newsletter_subscriber SET activeyn='B' WHERE emailid IN (%s) AND activeyn!='B'", strings.Join(args, ","))
+		result, err := db.Exec(query)
 		if err != nil {
-			log.Printf("err: %v\n", err)
+			log.Printf("Batch blocklist update error: %v\n", err)
 		} else {
-			log.Printf("%s marked as blocklisted", email)
+			rowsAffected, _ := result.RowsAffected()
+			log.Printf("%d subscribers marked as blocklisted", rowsAffected)
 		}
 	}
 }

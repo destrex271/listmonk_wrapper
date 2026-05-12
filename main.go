@@ -279,6 +279,8 @@ func updateVerificationStatusOnSource() {
 			WHERE target.activeyn != 'B'
 		`, strings.Join(values, ","))
 
+		fmt.Println("Executing Query: ", updateQuery)
+
 		res, err := db.Exec(updateQuery)
 		if err != nil {
 			log.Printf("Error in batch update (%d-%d): %v", i, end, err)
